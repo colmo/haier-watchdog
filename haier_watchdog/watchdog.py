@@ -42,18 +42,12 @@ class Watchdog:
         self._wake = asyncio.Event()
         self._tick_lock = asyncio.Lock()
         self._loop: asyncio.AbstractEventLoop | None = None
-        self._bg_tasks: set[asyncio.Task[None]] = set()
 
     def _on_mqtt_update(self) -> None:
         loop = self._loop
         if loop is None or loop.is_closed():
             return
         loop.call_soon_threadsafe(self._wake.set)
-
-    def _spawn(self, coro) -> None:
-        task = asyncio.create_task(coro)
-        self._bg_tasks.add(task)
-        task.add_done_callback(self._bg_tasks.discard)
 
     async def run_forever(self, stop: asyncio.Event) -> None:
         self._loop = asyncio.get_running_loop()
@@ -86,8 +80,6 @@ class Watchdog:
                 else:
                     await self._safe_tick(use_cache=False, trigger="http_poll")
         finally:
-            if self._bg_tasks:
-                await asyncio.gather(*self._bg_tasks, return_exceptions=True)
             self._events.write("watchdog_stop", {})
 
     async def _wait_wake_or_poll(self, stop: asyncio.Event) -> str:
@@ -143,12 +135,11 @@ class Watchdog:
             if falling:
                 self._log_off(status, trigger)
             event_id: str | None = None
+            guess: dict | None = None
             if rising:
                 event_id = uuid.uuid4().hex
-                self._spawn(
-                    self._log_turn_on(
-                        event_id=event_id, trigger=trigger, status=status
-                    )
+                guess = await self._log_turn_on(
+                    event_id=event_id, trigger=trigger, status=status
                 )
             if not status.is_on:
                 _LOGGER.info("%s apagado", status.name)
@@ -160,7 +151,7 @@ class Watchdog:
                 _LOGGER.info("%s encendido (ya preguntado en este ciclo)", status.name)
                 return
             _LOGGER.info("%s encendido inesperado; se pregunta por Telegram", status.name)
-            await self._ask_and_act(status, event_id)
+            await self._ask_and_act(status, event_id, guess=guess)
 
     def _log_off(self, status: AcStatus, trigger: str) -> None:
         _LOGGER.info("%s flanco apagado (%s)", status.name, trigger)
@@ -174,7 +165,7 @@ class Watchdog:
 
     async def _log_turn_on(
         self, *, event_id: str, trigger: str, status: AcStatus
-    ) -> None:
+    ) -> dict:
         try:
             snapshot = self._hon.snapshot()
         except Exception:
@@ -238,11 +229,14 @@ class Watchdog:
             status.target_temp,
             ",".join(mqtt_params) or "-",
         )
+        return guess
 
-    async def _ask_and_act(self, status: AcStatus, event_id: str | None) -> None:
+    async def _ask_and_act(
+        self, status: AcStatus, event_id: str | None, *, guess: dict | None = None
+    ) -> None:
         self._asking = True
         try:
-            decision = await self._telegram.ask_confirmation(status)
+            decision = await self._telegram.ask_confirmation(status, guess=guess)
             live = await self._hon.fetch_status()
             if decision == "yes":
                 if live.is_on:

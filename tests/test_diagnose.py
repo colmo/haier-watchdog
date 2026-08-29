@@ -3,7 +3,12 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from haier_watchdog.diagnose import guess_source, mqtt_changed_params, slim_history_item
+from haier_watchdog.diagnose import (
+    format_guess_es,
+    guess_source,
+    mqtt_changed_params,
+    slim_history_item,
+)
 from haier_watchdog.event_log import EventLog
 
 
@@ -46,6 +51,19 @@ class GuessSourceTest(unittest.TestCase):
         )
         self.assertEqual(guess["label"], "nube_programacion_o_asistente")
 
+    def test_telegram_line_uses_guess_not_raw_hon_code(self) -> None:
+        guess = guess_source(
+            operation_source=0,
+            last_activity={"channel": "appliance", "origin": "dashboard"},
+            recent_commands=[],
+            mqtt_params=["onOffStatus"],
+        )
+        line = format_guess_es(guess)
+        self.assertEqual(
+            line, "Origen estimado: termostato o mando local (confianza media)"
+        )
+        self.assertNotIn("local_o_desconocido", line or "")
+
     def test_mqtt_param_names(self) -> None:
         names = mqtt_changed_params(
             [
@@ -60,6 +78,35 @@ class GuessSourceTest(unittest.TestCase):
             ]
         )
         self.assertEqual(names, ["onOffStatus", "tempOutdoor"])
+
+
+class TelegramMessageTest(unittest.TestCase):
+    def test_alert_shows_thermostat_guess(self) -> None:
+        from haier_watchdog.hon_client import AcStatus
+
+        status = AcStatus(
+            name="Salón",
+            model="AD35S2SM3FA",
+            mac="aa-bb",
+            appliance_type="AC",
+            is_on=True,
+            connected=True,
+            mode="Frío",
+            target_temp=22,
+            indoor_temp=29,
+            outdoor_temp=36,
+            fan="Auto",
+        )
+        guess = {
+            "label": "termostato_o_mando_local",
+            "confidence": "media",
+        }
+        text = status.format_message(
+            timeout_seconds=300, timezone="Europe/Madrid", guess=guess
+        )
+        self.assertIn("Origen estimado: termostato o mando local (confianza media)", text)
+        self.assertNotIn("Origen hOn", text)
+        self.assertNotIn("local_o_desconocido", text)
 
 
 class SlimHistoryTest(unittest.TestCase):

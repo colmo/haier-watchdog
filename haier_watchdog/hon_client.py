@@ -14,7 +14,7 @@ from pyhon.appliance import HonAppliance
 
 from haier_watchdog import hon_auth_patch, mqtt_capture
 from haier_watchdog.config import Config
-from haier_watchdog.diagnose import operation_source_hint
+from haier_watchdog.diagnose import format_guess_es
 
 hon_auth_patch.install()
 mqtt_capture.install()
@@ -122,18 +122,31 @@ class AcStatus:
             lines.append("Aviso: hOn marca el aparato como desconectado.")
         return "\n".join(lines)
 
-    def format_message(self, *, timeout_seconds: int, timezone: str) -> str:
+    def format_message(
+        self,
+        *,
+        timeout_seconds: int,
+        timezone: str,
+        guess: dict[str, Any] | None = None,
+    ) -> str:
         minutes = max(1, round(timeout_seconds / 60))
-        return "\n".join(
+        parts = [
+            f"El aire <b>{_escape(self.name)}</b> se ha encendido.",
+            "",
+        ]
+        guess_line = format_guess_es(guess)
+        if guess_line:
+            parts.append(_escape(guess_line))
+            parts.append("")
+        parts.extend(
             [
-                f"El aire <b>{_escape(self.name)}</b> se ha encendido.",
-                "",
                 self.format_report(timezone=timezone, include_title=False),
                 "",
                 "¿Has sido tú quien lo ha encendido?",
                 f"Si no respondes en {minutes} min, o dices que no, lo apago.",
             ]
         )
+        return "\n".join(parts)
 
 
 def _escape(text: str) -> str:
@@ -239,9 +252,6 @@ def read_status(appliance: HonAppliance, timezone: str) -> AcStatus:
         swing_bits.append("vertical")
     if swing_bits:
         extras["Oscilación"] = " y ".join(swing_bits)
-    source_n = _to_int(appliance.get("operationSource"))
-    if source_n is not None:
-        extras["Origen hOn"] = f"{operation_source_hint(source_n)} [{source_n}]"
 
     try:
         now = datetime.now(ZoneInfo(timezone))

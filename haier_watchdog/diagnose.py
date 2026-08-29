@@ -23,6 +23,25 @@ def operation_source_hint(value: int | None) -> str:
     return OPERATION_SOURCE_HINT.get(value, f"codigo_{value}")
 
 
+_GUESS_LABEL_ES = {
+    "app_hOn": "app hOn",
+    "app_hOn_o_integracion": "app hOn o integración",
+    "nube_programacion_o_asistente": "programación, dashboard o asistente",
+    "termostato_o_mando_local": "termostato o mando local",
+    "desconocido": "desconocido",
+}
+
+
+def format_guess_es(guess: dict[str, Any] | None) -> str | None:
+    """Línea para Telegram: estimación, no el código crudo de hOn."""
+    if not guess:
+        return None
+    raw_label = str(guess.get("label") or "desconocido")
+    label = _GUESS_LABEL_ES.get(raw_label, raw_label)
+    confidence = str(guess.get("confidence") or "baja")
+    return f"Origen estimado: {label} (confianza {confidence})"
+
+
 def to_local_iso(value: Any, timezone_name: str) -> str | None:
     if value is None or value == "":
         return None

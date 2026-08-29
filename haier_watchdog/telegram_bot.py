@@ -126,7 +126,9 @@ class TelegramBot:
         future.set_result(decision)
         await query.answer("Hecho")
 
-    async def ask_confirmation(self, status: AcStatus) -> Decision | None:
+    async def ask_confirmation(
+        self, status: AcStatus, guess: dict | None = None
+    ) -> Decision | None:
         if self._config.telegram_chat_id is None:
             raise RuntimeError("Falta TELEGRAM_CHAT_ID")
         session_id = uuid.uuid4().hex
@@ -148,6 +150,7 @@ class TelegramBot:
         text = status.format_message(
             timeout_seconds=self._config.confirm_timeout_seconds,
             timezone=self._config.timezone,
+            guess=guess,
         )
         message = None
         try:
