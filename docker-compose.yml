@@ -6,6 +6,9 @@ services:
     environment:
       LOG_DIR: /app/logs
     volumes:
-      - ./logs:/app/logs
+      - logs:/app/logs
     restart: unless-stopped
     stop_grace_period: 40s
+
+volumes:
+  logs:

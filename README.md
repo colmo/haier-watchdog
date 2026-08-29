@@ -56,11 +56,9 @@ No uses `latest` en producción: pinnea `IMAGE_TAG` (por ejemplo `1.0.1`).
 
 ### VPS Debian 13
 
-Instala Docker Engine y el plugin Compose. En `/opt/haier` solo hacen falta tres cosas:
+Instala Docker Engine y el plugin Compose. En `/opt/haier` solo hacen falta Compose y `.env`:
 
 ```bash
-sudo mkdir -p /opt/haier/logs
-sudo chown 1000:1000 /opt/haier/logs
 # copia docker-compose.yml y .env (secretos + IMAGE_TAG=1.0.0)
 cd /opt/haier
 docker compose pull
@@ -68,7 +66,7 @@ docker compose up -d
 docker compose logs -f
 ```
 
-`IMAGE_TAG` en `.env` elige la versión. El contenedor monta `./logs` y no incluye secretos.
+`IMAGE_TAG` en `.env` elige la versión. Los ficheros de log van al volumen Docker `logs` (sobreviven a `compose down` y a cambiar de imagen). Los secretos no van en la imagen.
 
 Actualizar:
 
@@ -150,17 +148,27 @@ Ajusta `WorkingDirectory` y `ExecStart` si no usas `/opt/haier`. El proceso carg
 - `CONFIRM_TIMEOUT_SECONDS`: por defecto 300
 - `DRY_RUN`: `1` avisa pero no apaga
 - `TZ`: por defecto `Europe/Madrid`
-- `LOG_DIR`: por defecto `./logs` (en Docker, `/app/logs`)
+- `LOG_DIR`: por defecto `./logs` (en Docker, `/app/logs` en el volumen `logs`)
 - `IMAGE_TAG` / `IMAGE_NAME`: solo Compose; pinnean la imagen de GHCR (no uses `latest`)
 
 ## Logs
 
 El proceso escribe dos ficheros (no se suben a git):
 
-- `logs/watchdog.log`: traza de ejecución (MQTT, poll, reconexiones), con rotación.
-- `logs/events.jsonl`: un JSON por línea. Los eventos `ac_on` son los ricos: hora, temperaturas, payload MQTT, historial de la app, `last_activity` y `guess` (origen estimado). También hay `ac_off`, `telegram_decision`, `watchdog_start` y `watchdog_stop`.
+- `watchdog.log`: traza de ejecución (MQTT, poll, reconexiones), con rotación.
+- `events.jsonl`: un JSON por línea. Los eventos `ac_on` son los ricos: hora, temperaturas, payload MQTT, historial de la app, `last_activity` y `guess` (origen estimado). También hay `ac_off`, `telegram_decision`, `watchdog_start` y `watchdog_stop`.
 
-Tras unos meses, el fichero útil para diagnosticar encendidos es **`logs/events.jsonl`**.
+En Docker viven en el volumen `logs`. Para leerlos o copiarlos:
+
+```bash
+docker compose exec watchdog ls -l /app/logs
+docker compose exec watchdog tail -f /app/logs/events.jsonl
+docker compose cp watchdog:/app/logs/events.jsonl ./events.jsonl
+```
+
+`docker compose down` no borra el volumen. `docker compose down -v` sí (pierdes el historial).
+
+Tras unos meses, el fichero útil para diagnosticar encendidos es **`events.jsonl`**.
 
 ## Limitaciones
 
