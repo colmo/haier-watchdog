@@ -1,0 +1,16 @@
+[Unit]
+Description=Watchdog Haier hOn + Telegram (Docker Compose)
+After=network-online.target docker.service
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=/opt/haier
+ExecStart=/usr/bin/docker compose up -d --no-build
+ExecStop=/usr/bin/docker compose down
+TimeoutStopSec=40
+
+[Install]
+WantedBy=multi-user.target

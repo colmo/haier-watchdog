@@ -1,0 +1,21 @@
+# Legado: venv en /opt/haier. El despliegue recomendado es Docker:
+# deploy/haier-watchdog-docker.service + docker-compose.yml
+[Unit]
+Description=Watchdog Haier hOn + Telegram (venv)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/haier
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/opt/haier/.venv/bin/python -m haier_watchdog
+Restart=on-failure
+RestartSec=20
+TimeoutStopSec=40
+# Evita que un bucle de fallos de login martillee la API
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Install]
+WantedBy=multi-user.target

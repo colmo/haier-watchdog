@@ -1,0 +1,11 @@
+services:
+  watchdog:
+    image: ${IMAGE_NAME:-ghcr.io/colmo/haier-watchdog}:${IMAGE_TAG:-1.0.0}
+    build: .
+    env_file: .env
+    environment:
+      LOG_DIR: /app/logs
+    volumes:
+      - ./logs:/app/logs
+    restart: unless-stopped
+    stop_grace_period: 40s
