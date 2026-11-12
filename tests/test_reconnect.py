@@ -165,4 +165,4 @@ class TelegramNetworkLogTest(unittest.TestCase):
         self.assertTrue(any(isinstance(item, _QuietTelegramNetwork) for item in log.filters))
 
     def test_version(self) -> None:
-        self.assertEqual(__version__, "1.0.2")
+        self.assertEqual(__version__, "1.0.3")
