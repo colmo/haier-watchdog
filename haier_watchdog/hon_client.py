@@ -289,6 +289,18 @@ class HonClient:
             raise RuntimeError("hOn no está conectado")
         return self._appliance
 
+    @property
+    def connected(self) -> bool:
+        return self._appliance is not None
+
+    async def ensure_connected(self) -> HonAppliance:
+        """Login si la sesión se perdió. No lee appliance mientras esté a None."""
+        if self._appliance is None:
+            await self.connect()
+        if self._appliance is None:
+            raise RuntimeError("hOn no está conectado")
+        return self._appliance
+
     def subscribe_updates(self, callback: Callable[[], None]) -> None:
         """Recibe avisos cuando MQTT (appliancestatus/update) cambia el aparato."""
         self._on_update = callback
@@ -327,13 +339,13 @@ class HonClient:
         self._appliance = None
 
     async def fetch_status(self) -> AcStatus:
-        appliance = self.appliance
+        appliance = await self.ensure_connected()
         try:
             await appliance.update(force=True)
         except Exception:
             _LOGGER.warning("Fallo al actualizar estado; se reintenta el login")
             await self.connect()
-            appliance = self.appliance
+            appliance = await self.ensure_connected()
             await appliance.update(force=True)
         return read_status(appliance, self._config.timezone)
 

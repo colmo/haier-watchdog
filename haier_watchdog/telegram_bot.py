@@ -10,12 +10,34 @@ from typing import Literal
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.constants import ParseMode
+from telegram.error import NetworkError
 from telegram.ext import Application, CallbackQueryHandler, CommandHandler, ContextTypes
 
 from haier_watchdog.config import Config
 from haier_watchdog.hon_client import AcStatus
 
 _LOGGER = logging.getLogger(__name__)
+
+
+class _QuietTelegramNetwork(logging.Filter):
+    """El updater de PTB loguea Bad Gateway con traceback en cada reintento."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        exc = record.exc_info[1] if record.exc_info else None
+        if isinstance(exc, NetworkError):
+            _LOGGER.warning("Telegram sin red (%s); el polling reintenta solo", exc)
+            return False
+        return True
+
+
+def _quiet_telegram_network_logs() -> None:
+    # El filtro no se hereda: el traceback sale del logger telegram.ext.Updater.
+    for name in ("telegram.ext", "telegram.ext.Updater"):
+        log = logging.getLogger(name)
+        if any(isinstance(item, _QuietTelegramNetwork) for item in log.filters):
+            continue
+        log.addFilter(_QuietTelegramNetwork())
+
 
 Decision = Literal["yes", "no"]
 StatusProvider = Callable[[], Awaitable[AcStatus]]
@@ -32,9 +54,18 @@ class TelegramBot:
         self._app.add_handler(CommandHandler("start", self._on_start))
         self._app.add_handler(CommandHandler("status", self._on_status))
         self._app.add_handler(CallbackQueryHandler(self._on_callback, pattern=r"^ac:"))
+        self._app.add_error_handler(self._on_error)
+        _quiet_telegram_network_logs()
 
     def set_status_provider(self, provider: StatusProvider) -> None:
         self._status_provider = provider
+
+    async def _on_error(self, update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
+        err = context.error
+        if isinstance(err, NetworkError):
+            _LOGGER.warning("Telegram sin red (%s); el polling reintenta solo", err)
+            return
+        _LOGGER.error("Error de Telegram: %s", err, exc_info=err)
 
     async def start(self) -> None:
         await self._app.initialize()

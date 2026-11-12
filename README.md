@@ -22,7 +22,7 @@ Comandos del bot: `/start` (muestra tu `chat_id`) y `/status` (estado actual).
 
 ## Docker (recomendado)
 
-La imagen se publica en [GitHub Container Registry](https://github.com/features/packages) como `ghcr.io/colmo/haier-watchdog`. Cada tag git `v1.0.1` genera una imagen con el mismo número, más un tag `sha-…` del commit. En el VPS no hace falta copiar código: Compose, `.env` y el volumen de logs.
+La imagen se publica en [GitHub Container Registry](https://github.com/features/packages) como `ghcr.io/colmo/haier-watchdog`. Cada tag git `v1.0.2` genera una imagen con el mismo número, más un tag `sha-…` del commit. En el VPS no hace falta copiar código: Compose, `.env` y el volumen de logs.
 
 ### Prueba local
 
@@ -40,19 +40,19 @@ Para `chat_id` y el dump del aparato, el venv local sigue siendo más cómodo (v
 2. Commit y tag:
 
 ```bash
-git tag v1.0.1
-git push origin v1.0.1
+git tag v1.0.2
+git push origin v1.0.2
 ```
 
 GitHub Actions construye `linux/amd64` y sube a GHCR:
 
-- `ghcr.io/colmo/haier-watchdog:1.0.1` (el que usa el VPS)
+- `ghcr.io/colmo/haier-watchdog:1.0.2` (el que usa el VPS)
 - `ghcr.io/colmo/haier-watchdog:1.0`
 - `ghcr.io/colmo/haier-watchdog:sha-<commit>`
 
 Tras el **primer** push, el paquete nace privado aunque el repo sea público. En GitHub: **Packages → haier-watchdog → Package settings → Change visibility → Public**. Así el VPS hace `pull` sin token.
 
-No uses `latest` en producción: pinnea `IMAGE_TAG` (por ejemplo `1.0.1`).
+No uses `latest` en producción: pinnea `IMAGE_TAG` (por ejemplo `1.0.2`).
 
 ### VPS Debian 13
 
@@ -71,12 +71,12 @@ docker compose logs -f
 Actualizar:
 
 ```bash
-# IMAGE_TAG=1.0.1 en .env
+# IMAGE_TAG=1.0.2 en .env
 docker compose pull
 docker compose up -d
 ```
 
-Rollback: vuelve a poner `IMAGE_TAG=1.0.0` y repite pull + `up -d`.
+Rollback: vuelve a poner `IMAGE_TAG=1.0.1` y repite pull + `up -d`.
 
 Opcional: unidad systemd para `systemctl restart haier-watchdog`:
 

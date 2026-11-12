@@ -6,6 +6,8 @@ import asyncio
 import logging
 import uuid
 
+from pyhon.exceptions import HonAuthenticationError
+
 from haier_watchdog import mqtt_capture
 from haier_watchdog.config import Config
 from haier_watchdog.diagnose import (
@@ -23,6 +25,10 @@ _LOGGER = logging.getLogger(__name__)
 
 # Varios parámetros llegan en ráfaga al encender; esperar un poco para el mensaje.
 MQTT_DEBOUNCE_SECONDS = 0.8
+# Tras un login caído no esperamos al poll de 15 min: 5s, 10s, 20s… tope 5 min.
+HON_RETRY_START_SECONDS = 5.0
+HON_RETRY_MAX_SECONDS = 300.0
+HON_RETRY_MAX_FAILURES = 5
 
 
 class Watchdog:
@@ -42,6 +48,8 @@ class Watchdog:
         self._wake = asyncio.Event()
         self._tick_lock = asyncio.Lock()
         self._loop: asyncio.AbstractEventLoop | None = None
+        self._hon_failures = 0
+        self._reconnect_delay: float | None = None
 
     def _on_mqtt_update(self) -> None:
         loop = self._loop
@@ -85,6 +93,14 @@ class Watchdog:
     async def _wait_wake_or_poll(self, stop: asyncio.Event) -> str:
         if stop.is_set():
             return "stop"
+        if self._reconnect_delay is not None:
+            delay = self._reconnect_delay
+            self._reconnect_delay = None
+            try:
+                await asyncio.wait_for(stop.wait(), timeout=delay)
+            except TimeoutError:
+                return "poll"
+            return "stop"
         if self._wake.is_set():
             return "mqtt"
         stop_task = asyncio.create_task(stop.wait())
@@ -114,8 +130,36 @@ class Watchdog:
             await self._tick(use_cache=use_cache, trigger=trigger)
         except asyncio.CancelledError:
             raise
-        except Exception:
+        except Exception as exc:
+            if _is_hon_session_error(exc):
+                self._note_hon_failure(exc)
+                return
             _LOGGER.exception("Error en el ciclo de vigilancia")
+            return
+        self._hon_failures = 0
+        self._reconnect_delay = None
+
+    def _note_hon_failure(self, exc: BaseException) -> None:
+        self._hon_failures += 1
+        if self._hon_failures >= HON_RETRY_MAX_FAILURES:
+            _LOGGER.error(
+                "hOn sigue caído tras %s intentos (%s); salgo para que Docker reinicie",
+                self._hon_failures,
+                exc,
+            )
+            raise SystemExit(1)
+        delay = min(
+            HON_RETRY_START_SECONDS * (2 ** (self._hon_failures - 1)),
+            HON_RETRY_MAX_SECONDS,
+        )
+        self._reconnect_delay = delay
+        _LOGGER.warning(
+            "Sesión hOn caída (%s/%s): %s. Reintento de login en %ss",
+            self._hon_failures,
+            HON_RETRY_MAX_FAILURES,
+            exc,
+            int(delay),
+        )
 
     async def _tick(self, *, use_cache: bool, trigger: str) -> None:
         async with self._tick_lock:
@@ -332,6 +376,12 @@ class Watchdog:
         if extra:
             payload.update(extra)
         self._events.write("telegram_decision", payload)
+
+
+def _is_hon_session_error(exc: BaseException) -> bool:
+    if isinstance(exc, HonAuthenticationError):
+        return True
+    return isinstance(exc, RuntimeError) and "no está conectado" in str(exc)
 
 
 def _status_payload(status: AcStatus) -> dict:
