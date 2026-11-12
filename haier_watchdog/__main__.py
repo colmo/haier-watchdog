@@ -73,12 +73,6 @@ async def async_main() -> None:
         await _connect_hon(hon, stop)
         if stop.is_set():
             return
-        if config.dry_run:
-            await telegram.notify(
-                "Watchdog Haier arrancado en <b>DRY_RUN</b>: avisaré pero no apagaré."
-            )
-        else:
-            await telegram.notify("Watchdog Haier arrancado. Te avisaré si el aire se enciende.")
         await watchdog.run_forever(stop)
     finally:
         try:
